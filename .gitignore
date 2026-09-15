@@ -1,0 +1,9 @@
+node_modules/
+.pnpm-store/
+.env*
+!.env.example
+.wander/
+artifacts/
+.DS_Store
+__pycache__/
+*.pyc
