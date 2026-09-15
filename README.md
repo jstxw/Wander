@@ -114,7 +114,7 @@ The interface distinguishes between:
 - Passwords, payment details, one-time codes, CAPTCHAs, and sensitive final actions are left to you.
 - Wander will not complete checkout, publish, send messages, delete records, or change account security settings.
 - Chrome speech recognition may send microphone audio to Chrome's speech provider.
-- The built-in ledger allows up to 60 guidance decisions and $0.25 of tracked OpenAI usage per question, with a $1.80 total limit. These figures are application limits, not live provider balances. Steel costs are seperate.
+- The built-in ledger allows up to 60 guidance decisions per question and $1.80 of tracked OpenAI usage in total. These figures are application limits, not live provider balances. Steel costs are seperate.
 - Wander is designed for one trusted local user. Do not expose port 4318 to the public internet.
 
 ## Troubleshooting

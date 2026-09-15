@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Budget, TOTAL_LIMIT, RUN_LIMIT, MODEL, cost } from '../server/budget.mjs';
+import { Budget, TOTAL_LIMIT, MODEL, cost } from '../server/budget.mjs';
 import { normalizeActionMessage, plan } from '../server/planner.mjs';
 import { allowedUrl, checkoutPattern } from '../server/browser.mjs';
 
@@ -20,13 +20,17 @@ test('budget reservations survive process restart and settle with usage', t => {
   assert.ok(Math.abs(budget.data.spent - cost(100, 20)) < 1e-12);
   assert.equal(new Budget(file).data.spent, run.spent);
 });
-test('budget rejects a request before it crosses the total or task ceiling', t => {
+test('budget rejects a request before it crosses the total ceiling', t => {
   const { budget, run } = fixture(t);
   budget.data.spent = TOTAL_LIMIT - 0.00001;
   assert.throws(() => budget.reserve({}, run), /1.80/);
-  budget.data.spent = 0; run.spent = RUN_LIMIT;
-  assert.throws(() => budget.reserve({}, run), /0.25/);
   assert.equal(budget.data.calls, 0);
+});
+test('a single task has no separate spending ceiling', t => {
+  const { budget, run } = fixture(t);
+  run.spent = 0.9;
+  assert.ok(budget.reserve({}, run) > 0);
+  assert.equal(budget.data.calls, 1);
 });
 test('invalid usage cannot refund an ambiguous request', t => {
   const { budget, run } = fixture(t); const reserved = budget.reserve({}, run);

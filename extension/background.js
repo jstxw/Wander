@@ -126,7 +126,7 @@ chrome.action.onClicked.addListener(async tab => {
   try { await inject(tab.id); }
   catch { await chrome.tabs.create({ url: `${SERVER}/?pair=${chrome.runtime.id}` }); }
 });
-chrome.tabs.onUpdated.addListener(async (tabId, info) => {
+chrome.tabs.onUpdated.addListener(async (tabId, info, updatedTab) => {
   if (info.status === 'loading') {
     const active = await control();
     if (active?.tabId === tabId) await cancelOffscreenSpeech();
@@ -134,13 +134,27 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   }
   if (info.status !== 'complete') return;
   const active = await control();
-  if (active?.tabId === tabId) {
+  // New tabs finish loading about:blank before the real page; only observe ordinary websites.
+  const url = updatedTab?.url ?? (await chrome.tabs.get(tabId).catch(() => null))?.url;
+  if (active?.tabId === tabId && isWebUrl(url)) {
     await inject(tabId).catch(() => {});
     if (active.status === 'running') {
       if (active.pending) await acknowledge(active, false).catch(() => {});
       else runLoop();
     }
   }
+});
+// A link that opens a new tab or window carries the task there, so guidance continues instead of resetting.
+chrome.tabs.onCreated.addListener(async tab => {
+  const active = await control();
+  if (!active || tab.openerTabId !== active.tabId || !['running', 'paused', 'waiting'].includes(active.status)) return;
+  await clearTab(active.tabId);
+  const memoryKey = `memory:${active.tabId}`;
+  const saved = (await chrome.storage.session.get(memoryKey))[memoryKey];
+  if (saved) await chrome.storage.session.set({ [`memory:${tab.id}`]: saved });
+  await setControl({ ...active, tabId: tab.id, pending: null, page: tab.pendingUrl || tab.url });
+  // Opening the tab is the learner acting on the highlighted link.
+  if (active.pending) await request('result', { runId: active.runId, actionId: active.pending.id, ok: true }).catch(() => {});
 });
 chrome.tabs.onRemoved.addListener(async tabId => {
   await chrome.storage.session.remove(`memory:${tabId}`);

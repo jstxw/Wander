@@ -71,6 +71,18 @@ async function streamSpeech(res, body) {
   res.writeHead(200, { 'Content-Type': response.headers.get('content-type')?.split(';')[0] || 'audio/mpeg', 'Transfer-Encoding': 'chunked' });
   await pipeline(Readable.fromWeb(response.body), res);
 }
+// A run's practice-browser jobs (inspect, rehearse, release) share one Steel session and state file, so they run one at a time.
+function practice(task, work) {
+  task.practiceQueue = (task.practiceQueue || Promise.resolve()).then(work, work);
+  return task.practiceQueue;
+}
+const samePage = (a, b) => { try { const x = new URL(a), y = new URL(b); return x.origin === y.origin && x.pathname === y.pathname; } catch { return false; } };
+function releasePractice(task) {
+  practice(task, () => computer?.releaseTutor(task.id))
+    .then(() => { if (task.workspace) { task.workspace.viewerUrl = null; task.workspace.phase = 'ended'; } })
+    .catch(error => log('info', safeError(error)));
+}
+
 async function stop(status) {
   if (run && ['running', 'waiting', 'paused'].includes(run.status)) {
     run.status = status; run.message = status === 'paused' ? 'You’re in control. Say “Hello Wander, resume” when you’re ready.' : 'Task stopped.';
@@ -78,10 +90,7 @@ async function stop(status) {
     await localStep;
     log('info', run.message);
   }
-  if (status === 'stopped' && run?.tutor) {
-    try { await computer?.releaseTutor(run.id); if (run.workspace) { run.workspace.viewerUrl = null; run.workspace.phase = 'ended'; } }
-    catch (error) { log('info', safeError(error)); }
-  }
+  if (status === 'stopped' && run?.tutor) releasePractice(run);
 }
 
 async function localRequest(endpoint, body) {
@@ -107,7 +116,7 @@ async function localRequest(endpoint, body) {
     if (!computer?.ready) throw new Error('Prepare the tutor workspace first.');
     const task = typeof body.task === 'string' ? body.task.trim() : '';
     if (!task || task.length > 1500) throw new Error('Enter a short task, up to 1,500 characters.');
-    if (run?.tutor) { try { await computer.releaseTutor(run.id); } catch (error) { log('info', safeError(error)); } }
+    if (run?.tutor) releasePractice(run);
     run = { id: randomUUID(), mode: 'local', modelMode: ['dynamic', 'low', 'high'].includes(body.modelMode) ? body.modelMode : 'dynamic', task, status: 'running', message: 'Reading your tab…', spent: 0, steps: 0, history: [], memory: Array.isArray(body.memory) ? body.memory.slice(-8).map(item => ({ page: String(item.page || '').slice(0, 500), task: String(item.task || '').slice(0, 1500), status: String(item.status || '').slice(0, 30), outcome: String(item.outcome || '').slice(0, 1000) })) : [], pendingAction: null };
     run.tutor = true; run.phase = 'exploring';
     run.message = 'Wander is opening a separate browser to understand this website…';
@@ -152,13 +161,27 @@ async function localRequest(endpoint, body) {
     const active = run;
     localStep = (async () => {
       try {
-        active.phase = 'exploring'; active.message = 'Checking this step in Wander’s practice browser…';
+        const started = Date.now(), signal = controller.signal;
+        active.phase = 'exploring'; active.message = 'Choosing your next step…';
+        // Decide from the learner's real tab right away. The practice browser inspects in parallel,
+        // and its evidence informs later steps on the same page instead of delaying this one.
+        if (!samePage(active.evidence?.url, observation.url)) active.evidence = null;
         log('info', 'Inspecting the public page in the practice browser and saving evidence.');
-        const inspected = await computer.inspect(observation.url, active.id, controller.signal);
+        practice(active, () => computer.inspect(observation.url, active.id, signal))
+          .then(inspected => { active.evidence = inspected.evidence; active.workspace = inspected.workspace; })
+          .catch(error => { if (!signal.aborted) log('info', safeError(error)); });
+        const action = await plan({ key: process.env.OPENAI_API_KEY, task: active.task, observation, history: active.history, budget, run: active, signal });
         if (active.status !== 'running') return { state: state(), action: null };
-        active.evidence = inspected.evidence; active.workspace = inspected.workspace;
-        const action = await plan({ key: process.env.OPENAI_API_KEY, task: active.task, observation, history: active.history, budget, run: active, signal: controller.signal, fetcher: computer.tutorFetcher(process.env.OPENAI_API_KEY, active.id) });
-        if (active.status !== 'running') return { state: state(), action: null };
+        log('info', `Next step chosen in ${((Date.now() - started) / 1000).toFixed(1)}s.`);
+        // Rehearse after the highlight is shown; the learner never waits on the practice browser.
+        const target = observation.elements.find(element => element.id === action.target) || null;
+        practice(active, () => computer.tutor('rehearse', { action: { action: action.action, value: action.value, message: action.message }, target, url: observation.url, recentActions: active.history.slice(-5) }, active.id, '', signal))
+          .then(result => {
+            if (result?.status !== 200) return;
+            active.workspace = result.data;
+            if (['click', 'scroll'].includes(action.action)) log('info', result.data.rehearsed ? 'Public navigation rehearsed in the practice browser.' : 'Guidance is anchored to your tab. This action was not rehearsed.');
+          })
+          .catch(error => { if (!signal.aborted) log('info', safeError(error)); });
         if (action.action === 'wait') {
           active.waitCount = (active.waitCount || 0) + 1;
           if (active.waitCount >= 3) {
@@ -171,11 +194,10 @@ async function localRequest(endpoint, body) {
         if (action.action === 'done' || action.action === 'ask') {
           active.status = action.action === 'done' ? 'done' : 'waiting'; log(action.action === 'done' ? 'success' : 'question', action.message);
           active.phase = action.action === 'done' ? 'complete' : 'needs-you';
-          if (action.action === 'done') { try { await computer.releaseTutor(active.id); if (active.workspace) { active.workspace.viewerUrl = null; active.workspace.phase = 'ended'; } } catch (error) { log('info', safeError(error)); } }
+          if (action.action === 'done') releasePractice(active);
           return { state: state(), action: null };
         }
         active.phase = 'your-turn';
-        log('info', active.workspace?.rehearsed ? 'Public navigation rehearsed. Your turn in the highlighted control.' : 'Guidance is anchored to your tab. This action was not rehearsed.');
         action.id = randomUUID(); active.pendingAction = action; log('action', action.message);
         return { state: state(), action };
       } catch (error) {

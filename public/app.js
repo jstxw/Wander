@@ -65,7 +65,6 @@ $('pairButton').onclick = async () => {
 };
 $('aboutButton').onclick = () => { refresh(); $('aboutWander').showModal(); };
 $('closeAbout').onclick = () => $('aboutWander').close();
-document.querySelector('#settings .settings-info p').textContent = 'Up to 60 guidance steps and $0.25 per task; $1.80 total tracked OpenAI usage. Practice browser usage is billed separately.';
 refresh(); setInterval(refresh,10000);
 const waypoints = [...document.querySelectorAll('.waypoint')];
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');

@@ -31,6 +31,13 @@ test('tutor highlights without clicking; only learner interaction advances; guid
   assert.equal(await page.locator('#result').textContent(), 'Choose an action');
   assert.equal(await page.evaluate(() => messages.length), 0);
   assert.ok(!(await page.evaluate(snapshotPage)).text.includes('Click Search to find'));
+  assert.equal(await page.evaluate(() => {
+    const root = document.querySelector('#wander-guidance').shadowRoot;
+    const veils = [...root.querySelectorAll('.veil')];
+    const target = document.querySelector('#search').getBoundingClientRect();
+    const clearPoint = document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2);
+    return veils.length === 4 && veils.every(veil => !veil.hidden && getComputedStyle(veil).pointerEvents === 'none') && clearPoint === document.querySelector('#search');
+  }), true);
   fs.mkdirSync('artifacts', { recursive: true });
   await page.screenshot({ path: 'artifacts/wander-guidance.png' });
   await page.locator('#search').click();

@@ -4,7 +4,6 @@ import path from 'node:path';
 export const MODEL = 'gpt-5.6-luna';
 export const MAX_OUTPUT = 450;
 export const TOTAL_LIMIT = 1.80;
-export const RUN_LIMIT = 0.25;
 export const MAX_STEPS = 60;
 export const REQUEST_BYTE_LIMIT = 48000;
 // Luna: $0.20/M input, $1.20/M output. Conservatively allow the 1.25x cache-write rate on all input.
@@ -32,7 +31,6 @@ export class Budget {
     if (bytes > REQUEST_BYTE_LIMIT) throw new Error('Page snapshot exceeded the request size limit.');
     const amount = cost(bytes + 2048, body.max_completion_tokens || MAX_OUTPUT, body.model);
     if (this.data.spent + amount > TOTAL_LIMIT) throw new Error('The $1.80 app budget is reached. No more model calls will be made.');
-    if (run.spent + amount > RUN_LIMIT) throw new Error('This task reached its $0.25 budget. Start a new task only if you want to continue.');
     this.data.spent += amount;
     this.data.calls++;
     run.spent += amount;
@@ -47,6 +45,6 @@ export class Budget {
     saveJson(this.file, this.data);
   }
   publicState() {
-    return { spent: this.data.spent, limit: TOTAL_LIMIT, calls: this.data.calls, runLimit: RUN_LIMIT, model: MODEL };
+    return { spent: this.data.spent, limit: TOTAL_LIMIT, calls: this.data.calls, model: MODEL };
   }
 }

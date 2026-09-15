@@ -18,11 +18,11 @@ export function showGuidance({ action, observation, runId }) {
   host.style.cssText = 'position:fixed!important;inset:0!important;z-index:2147483646!important;pointer-events:none!important;';
   const root = host.attachShadow({ mode: 'closed' });
   root.innerHTML = `<style>
-    *{box-sizing:border-box}.ring{position:fixed;border:3px solid #0a0a0a;border-radius:14px;box-shadow:0 0 0 3px #fff,0 0 0 9px rgba(10,10,10,.16),0 14px 40px rgba(0,0,0,.28);pointer-events:none;transition:width .12s,height .12s;}
+    *{box-sizing:border-box}.veil{position:fixed;background:rgba(242,242,247,.38);-webkit-backdrop-filter:blur(6px) saturate(65%);backdrop-filter:blur(6px) saturate(65%);pointer-events:none;transition:left .12s,top .12s,width .12s,height .12s}.ring{position:fixed;border:3px solid #0a0a0a;border-radius:14px;box-shadow:0 0 0 3px #fff,0 0 0 9px rgba(10,10,10,.16),0 14px 40px rgba(0,0,0,.28);pointer-events:none;transition:left .12s,top .12s,width .12s,height .12s;}
     .hint{position:fixed;width:290px;max-width:calc(100vw - 24px);padding:18px 20px;border:1px solid rgba(255,255,255,.7);border-radius:24px;background:rgba(255,255,255,.84);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);color:#1d1d1f;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 20px 60px rgba(0,0,0,.22);font:15px/1.45 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;letter-spacing:-.01em;-webkit-font-smoothing:antialiased;pointer-events:auto;}
     .label{font-size:13px;font-weight:600;color:#86868b;margin-bottom:4px}.text{font-size:17px;font-weight:600;line-height:1.3;letter-spacing:-.022em;overflow-wrap:anywhere}.value{margin-top:6px;font-size:14px;color:#6e6e73;overflow-wrap:anywhere}.actions{display:flex;gap:8px;margin-top:14px}button{font:inherit;font-size:14px;font-weight:500;color:#fff;border:0;border-radius:999px;background:#0a0a0a;padding:10px 18px;cursor:pointer;transition:background .15s}button:hover{background:#2c2c2e}button:focus-visible{outline:2px solid #0a0a0a;outline-offset:3px}
     @media(prefers-reduced-motion:reduce){*{transition:none}}
-  </style><div class="ring" hidden></div><aside class="hint" role="status" aria-live="polite"><div class="label">Your turn</div><div class="text"></div><div class="value"></div><div class="actions"><button class="check">Check my progress</button></div></aside>`;
+  </style><div class="veil veil-top" hidden></div><div class="veil veil-left" hidden></div><div class="veil veil-right" hidden></div><div class="veil veil-bottom" hidden></div><div class="ring" hidden></div><aside class="hint" role="status" aria-live="polite"><div class="label">Your turn</div><div class="text"></div><div class="value"></div><div class="actions"><button class="check">Check my progress</button></div></aside>`;
   root.querySelector('.text').textContent = action.message;
   root.querySelector('.value').textContent = ['fill', 'select', 'press', 'navigate'].includes(action.action) ? action.value : '';
   document.documentElement.append(host);
@@ -63,14 +63,25 @@ export function showGuidance({ action, observation, runId }) {
   };
   const position = () => {
     if (element && !element.isConnected) { finish(false); return; }
-    const hint = root.querySelector('.hint'), ring = root.querySelector('.ring');
+    const hint = root.querySelector('.hint'), ring = root.querySelector('.ring'), veils = [...root.querySelectorAll('.veil')];
     const r = element?.getBoundingClientRect();
     if (r && r.width && r.height) {
+      const gap = 10;
+      const left = Math.max(0, r.left - gap), top = Math.max(0, r.top - gap);
+      const right = Math.min(innerWidth, r.right + gap), bottom = Math.min(innerHeight, r.bottom + gap);
+      const setBox = (node, x, y, width, height) => {
+        node.hidden = false;
+        Object.assign(node.style, { left: `${x}px`, top: `${y}px`, width: `${Math.max(0, width)}px`, height: `${Math.max(0, height)}px` });
+      };
+      setBox(veils[0], 0, 0, innerWidth, top);
+      setBox(veils[1], 0, top, left, bottom - top);
+      setBox(veils[2], right, top, innerWidth - right, bottom - top);
+      setBox(veils[3], 0, bottom, innerWidth, innerHeight - bottom);
       ring.hidden = false;
       Object.assign(ring.style, { left: `${r.left - 5}px`, top: `${r.top - 5}px`, width: `${r.width + 10}px`, height: `${r.height + 10}px` });
       hint.style.left = `${Math.max(12, Math.min(innerWidth - hint.offsetWidth - 12, r.left))}px`;
       hint.style.top = `${Math.max(12, Math.min(innerHeight - hint.offsetHeight - 12, r.bottom + 14 + hint.offsetHeight < innerHeight ? r.bottom + 14 : r.top - hint.offsetHeight - 14))}px`;
-    } else { ring.hidden = true; hint.style.left = '18px'; hint.style.bottom = '18px'; }
+    } else { ring.hidden = true; veils.forEach(veil => { veil.hidden = true; }); hint.style.left = '18px'; hint.style.bottom = '18px'; }
   };
   root.querySelector('.check').onclick = () => finish(false);
   document.addEventListener('click', clicked, true);

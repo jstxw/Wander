@@ -184,6 +184,27 @@ def main(operation, payload, run_id):
         save(directory, 'state.json', state)
         state['artifacts'] = sorted(p.name for p in directory.iterdir() if p.is_file() and not p.name.endswith('.tmp'))
         return {'status': 200, 'data': {'evidence': evidence, 'workspace': state}}
+    if operation == 'rehearse':
+        # Runs after the learner already sees the highlight, so it never delays guidance.
+        action = payload.get('action') or {}
+        target = payload.get('target')
+        state['decisions'] = state.get('decisions', 0) + 1
+        state['rehearsed'] = False
+        try:
+            if state.get('phase') != 'local-observation' and action.get('action') in ('click', 'scroll'):
+                try:
+                    shadow(directory, state, payload['url'], action, target)
+                except Exception:
+                    state['phase'] = 'observed'
+            save(directory, 'guidance.json', action)
+            event(directory, 'guidance', {'action': action.get('action'), 'targetLabel': (target or {}).get('label'),
+                                        'rehearsed': state['rehearsed']})
+            save(directory, 'progress.json', {'decisions': state['decisions'], 'history': payload.get('recentActions', [])})
+        except Exception:
+            event(directory, 'guidance_error', 'Could not rehearse this decision; guidance was already shown')
+        save(directory, 'state.json', state)
+        state['artifacts'] = sorted(p.name for p in directory.iterdir() if p.is_file() and not p.name.endswith('.tmp'))
+        return {'status': 200, 'data': state}
     if operation != 'plan':
         raise ValueError('Unknown operation')
     # The request is already budget-reserved by the local server. Never retry a paid call.
