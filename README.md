@@ -5,7 +5,7 @@
 
 Wander is a Chrome tutoring extension that teaches people how to use websites, one highlighted step at a time.
 
-Ask Wander a question by typing or speaking—for example, “Show me how to renew my passport.” Wander studies the page, highlights the next control in your Chrome tab, and tells you what to do. **You remain in control:** Wander does not click, type, submit forms, or navigate the website for you.
+Ask Wander a question by typing or speaking—for example, “Show me how to renew my passport.” Wander studies the page, highlights the next control in your Chrome tab, and tells you what to do. **You remain in control:** Wander never submits or navigates for you. For ordinary, non-sensitive fields, you can explicitly choose **Fill it for me** or **Choose it for me**.
 
 To improve its guidance, Wander can inspect and rehearse safe public navigation in a separate, isolated browser running on Steel. That browser does not receive your Chrome profile, cookies, or logged-in session.
 
@@ -81,7 +81,7 @@ The first question can take a few minutes while Wander sets up its Python enviro
 
 - Type a question in the floating panel or click **Talk to Wander**.
 - Click the green Wander button to open or close the panel. Spoken guidance does not open it automatically.
-- Follow the highlighted marker in your own tab; Wander never performs the highlighted action for you.
+- Follow the highlighted marker in your own tab. For an ordinary text field or dropdown, use the optional autofill button if you do not want to enter the suggested value yourself.
 - Use **Pause**, **Resume**, or **Stop** to control the current question.
 - If “Hello Wander” is enabled, say **“Hello Wander, resume”** to continue a paused question.
 - Open **Settings** to choose a model or switch between a browser voice.
@@ -111,7 +111,7 @@ The interface distinguishes between:
 
 - Your cookies, Chrome profile, and logged-in session are not copied to Steel Browser.
 - Visible page text and your question are sent to OpenAI through Steel Computer. Public-page evidence can be stored temporarily on that computer.
-- Passwords, payment details, one-time codes, CAPTCHAs, and sensitive final actions are left to you.
+- Passwords, payment details, one-time codes, personal contact or identity fields, CAPTCHAs, and sensitive final actions are never offered for autofill and are left to you.
 - Wander will not complete checkout, publish, send messages, delete records, or change account security settings.
 - Chrome speech recognition may send microphone audio to Chrome's speech provider.
 - The built-in ledger allows up to 60 guidance decisions per question and $1.80 of tracked OpenAI usage in total. These figures are application limits, not live provider balances. Steel costs are seperate.

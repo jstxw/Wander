@@ -12,7 +12,7 @@ async function fixture(t) {
   const browser = await chromium.launch({ executablePath, headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await page.setContent('<style>body{padding:60px;font-family:Arial}button,input{padding:14px;margin:10px}</style><h1>Find a community workshop</h1><label>Search workshops<input id="query"></label><button id="search">Search</button><button id="wrong">About us</button><button id="checkout">Checkout</button><input type="password" value="secret"><p id="result">Choose an action</p>');
+  await page.setContent('<style>body{padding:60px;font-family:Arial}button,input,select{padding:14px;margin:10px}</style><h1>Find a community workshop</h1><label>Search workshops<input id="query"></label><label>Colour<select id="colour"><option value="">Any</option><option value="blue">Blue</option></select></label><label>Email<input id="email" type="email"></label><button id="search">Search</button><button id="wrong">About us</button><button id="checkout">Checkout</button><input type="password" value="secret"><p id="result">Choose an action</p>');
   await page.evaluate(() => {
     const attach = Element.prototype.attachShadow;
     Element.prototype.attachShadow = function(o) { return attach.call(this, { ...o, mode: 'open' }); };
@@ -62,16 +62,29 @@ test('wrong clicks trigger reobservation; clearing a highlight cancels callbacks
   assert.equal(await page.evaluate(() => messages.length), 1);
 });
 
-test('fill guidance never writes values and waits for the learner to finish; sensitive targets refused', { skip: !executablePath }, async t => {
+test('fill guidance waits for consent, can fill ordinary fields, and refuses sensitive targets', { skip: !executablePath }, async t => {
   const page = await fixture(t);
   const observation = await page.evaluate(snapshotPage);
   const target = observation.elements.find(e => e.tag === 'input' && !e.sensitive).id;
   await page.evaluate(showGuidance, { action: { id: 'fill', action: 'fill', target, value: 'art', message: 'Type art, then leave the field.' }, observation, runId: 'm' });
   assert.equal(await page.locator('#query').inputValue(), '');
-  await page.locator('#query').fill('art');
-  assert.equal(await page.evaluate(() => messages.length), 0);
-  await page.locator('#query').press('Tab');
+  assert.equal(await page.locator('#wander-guidance .autofill').textContent(), 'Fill it for me');
+  await page.locator('#wander-guidance .autofill').click();
   await page.waitForFunction(() => messages.length === 1);
+  assert.equal(await page.locator('#query').inputValue(), 'art');
+  assert.equal(await page.evaluate(() => messages[0].ok), true);
+  await page.evaluate(() => { messages = []; });
+  const selectTarget = observation.elements.find(e => e.tag === 'select').id;
+  await page.evaluate(showGuidance, { action: { id: 'select', action: 'select', target: selectTarget, value: 'blue', message: 'Choose blue.' }, observation, runId: 'm' });
+  assert.equal(await page.locator('#wander-guidance .autofill').textContent(), 'Choose it for me');
+  await page.locator('#wander-guidance .autofill').click();
+  await page.waitForFunction(() => messages.length === 1);
+  assert.equal(await page.locator('#colour').inputValue(), 'blue');
+  const emailTarget = observation.elements.find(e => e.type === 'email');
+  assert.equal(emailTarget.autofillable, false);
+  await page.evaluate(showGuidance, { action: { id: 'email', action: 'fill', target: emailTarget.id, value: 'person@example.com', message: 'Enter your email.' }, observation, runId: 'm' });
+  assert.equal(await page.locator('#wander-guidance .autofill').isHidden(), true);
+  assert.equal(await page.locator('#email').inputValue(), '');
   for (const e of observation.elements.filter(e => e.sensitive || e.label === 'Checkout')) {
     assert.equal((await page.evaluate(showGuidance, { action: { id: 'bad', action: 'click', target: e.id }, observation, runId: 'm' })).ok, false);
   }
