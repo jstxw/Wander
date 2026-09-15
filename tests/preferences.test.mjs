@@ -8,7 +8,7 @@ test('landing settings persist only model and voice and reject foreign senders o
  globalThis.chrome = {
   storage:{local:{get:async keys => Object.fromEntries(keys.map(k => [k,values[k]])),set:async data => Object.assign(values,data)}},
   runtime:{onMessageExternal:{addListener(fn){external=fn;}},onMessage:{addListener(fn){internal=fn;}}},
-  action:{onClicked:listener},tabs:{onUpdated:listener,onRemoved:listener}
+  action:{onClicked:listener},tabs:{onCreated:listener,onUpdated:listener,onRemoved:listener}
  };
  try {
   await import('../extension/background.js');

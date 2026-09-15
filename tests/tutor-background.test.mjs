@@ -12,7 +12,7 @@ test('extension coordinates tutoring without tab actions, rejects foreign-frame 
     storage: { local: storage, session: storage },
     runtime: { id: 'a'.repeat(32), onMessage: { addListener: fn => listeners.message = fn }, onMessageExternal: { addListener: fn => listeners.external = fn } },
     action: { onClicked: { addListener() {} } },
-    tabs: { get: async () => tab, sendMessage: async (_tabId, payload) => notifications.push(payload), create: async () => {}, update: async () => { throw new Error('Tutor must never navigate the learner tab'); }, onUpdated: { addListener: fn => listeners.updated = fn }, onRemoved: { addListener() {} } },
+    tabs: { get: async () => tab, sendMessage: async (_tabId, payload) => notifications.push(payload), create: async () => {}, update: async () => { throw new Error('Tutor must never navigate the learner tab'); }, onUpdated: { addListener: fn => listeners.updated = fn }, onCreated: { addListener() {} }, onRemoved: { addListener() {} } },
     scripting: { executeScript: async options => {
       scripts.push(options.func?.name || 'overlay');
       if (options.func?.name === 'snapshotPage') return [{ frameId: 0, result: { url: tab.url, title: 'Catalogue', text: steps ? 'Search page opened' : 'Search the catalogue', elements: [{ id: 1, label: 'Search', tag: 'button', disabled: false }] } }];
