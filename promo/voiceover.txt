@@ -1,0 +1,15 @@
+The web can feel like a maze. Menus inside menus. Unfamiliar words. And too many places to click.
+
+Meet Wander: a calm guide that helps you learn any ordinary website by doing.
+
+Just ask what you want to accomplish. Type your question, tap to talk, or simply say, “Hello Wander.”
+
+Wander studies the page and gives you one clear next step. A yellow marker shows exactly where to go, while you stay in control of every click, every word, and every decision.
+
+Take a wrong turn? No problem. Wander looks again and adapts to where you are. Pause when you need a break, resume when you’re ready, or stop at any time.
+
+Behind the scenes, Wander can inspect a public page in a separate practice browser, rehearse safe navigation, and save evidence for the guidance it gives you. Your login, passwords, payments, and final sensitive actions always stay with you.
+
+From government services and online shopping, to travel, job applications, and everyday tasks, Wander helps make the web feel possible.
+
+Wander. Wherever you're headed, one step at a time.

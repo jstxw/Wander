@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Wander promotional video renderer</title>
+  <style>
+    html,body{margin:0;background:#121b18;display:grid;place-items:center;min-height:100%;overflow:hidden}
+    canvas{width:min(100vw,1280px);height:auto;box-shadow:0 30px 100px #0008}
+  </style>
+</head>
+<body>
+<canvas id="stage" width="1280" height="720"></canvas>
+<script type="module">
+const canvas = document.querySelector('#stage');
+const ctx = canvas.getContext('2d', { alpha: false });
+const W = canvas.width, H = canvas.height, DURATION = 90;
+const colors = { ink:'#1f3a33', muted:'#5a6f67', moss:'#3e6b5a', pine:'#1f3a33', pale:'#eef2ec', line:'#cfdad2', cream:'#fbfcfa', peach:'#f6d7c6' };
+const assets = {};
+const sources = {
+  site:'../artifacts/wander-promo/wander-on-public-services.png',
+  highlight:'../artifacts/wander-promo/wander-highlight.png',
+  dashboard:'../artifacts/wander-tutor-desktop.png'
+};
+
+function loadImage(src){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=src})}
+for (const [key,src] of Object.entries(sources)) assets[key] = await loadImage(src);
+
+function clamp(value,min=0,max=1){return Math.max(min,Math.min(max,value))}
+function ease(value){value=clamp(value);return value*value*(3-2*value)}
+function local(t,start,end){return clamp((t-start)/(end-start))}
+function alphaScene(t,start,end,edge=.6){return Math.min(local(t,start,start+edge),1-local(t,end-edge,end))}
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+function fillRound(x,y,w,h,r,fill,stroke){rr(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke()}}
+function text(str,x,y,size,weight='400',color=colors.ink,align='left',font='Segoe UI'){
+  ctx.font=`${weight} ${size}px ${font}`;ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline='alphabetic';ctx.fillText(str,x,y);
+}
+function lines(items,x,y,size,lineHeight,weight='400',color=colors.ink,align='left'){
+  items.forEach((item,index)=>text(item,x,y+index*lineHeight,size,weight,color,align));
+}
+function background(tone=colors.cream){ctx.fillStyle=tone;ctx.fillRect(0,0,W,H)}
+function imageCover(image,x,y,w,h,zoom=1,focusX=.5,focusY=.5){
+  const scale=Math.max(w/image.width,h/image.height)*zoom;
+  const sw=w/scale,sh=h/scale,sx=(image.width-sw)*focusX,sy=(image.height-sh)*focusY;
+  ctx.drawImage(image,sx,sy,sw,sh,x,y,w,h);
+}
+function imageContain(image,x,y,w,h){const scale=Math.min(w/image.width,h/image.height);const dw=image.width*scale,dh=image.height*scale;ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh)}
+function eyebrow(label,x,y,align='left'){text(label.toUpperCase(),x,y,13,'700','#82a598',align);}
+function brand(x,y,scale=1,dark=false){
+  ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
+  fillRound(1,-14,28,28,7,dark?'#fff':'#1f3a33');ctx.fillStyle='#f2b233';ctx.fillRect(15,-9,5,8);ctx.fillRect(10,1,5,8);
+  text('Wander',38,8,29,'800',dark?'#fff':colors.ink);ctx.restore();
+}
+function orb(x,y,r,t){
+  const glow=ctx.createRadialGradient(x-r*.3,y-r*.35,r*.05,x,y,r*1.35);glow.addColorStop(0,'#ffe0d7');glow.addColorStop(.36,'#b2dfcf');glow.addColorStop(.75,'#6fbfa2');glow.addColorStop(1,'#3f736000');
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(x,y,r*1.35,0,Math.PI*2);ctx.fill();
+  const gradient=ctx.createRadialGradient(x-r*.35,y-r*.35,0,x,y,r);gradient.addColorStop(0,'#ffdccc');gradient.addColorStop(.35,'#b0dfce');gradient.addColorStop(.7,'#82c5ad');gradient.addColorStop(1,'#4d826f');ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  ctx.save();ctx.beginPath();ctx.arc(x,y,r*.94,0,Math.PI*2);ctx.clip();ctx.globalAlpha=.33;ctx.strokeStyle='#fff';ctx.lineWidth=1.2;
+  for(let i=0;i<24;i++){ctx.beginPath();ctx.ellipse(x+Math.sin(t*.8+i*.18)*r*.08,y+Math.cos(t*.55+i*.2)*r*.07,r*(.22+i*.029),r*(.11+i*.022),t*.07+i*.08,0,Math.PI*2);ctx.stroke()}
+  ctx.restore();
+}
+function frameChrome(x,y,w,h,label='YOUR WEBSITE'){
+  fillRound(x,y,w,h,18,'#fff','#d8e2de');ctx.save();rr(x,y,w,h,18);ctx.clip();ctx.fillStyle='#f6f9f8';ctx.fillRect(x,y,w,42);ctx.fillStyle='#afdecd';ctx.beginPath();ctx.arc(x+22,y+21,4,0,7);ctx.fill();ctx.fillStyle='#e8cf8f';ctx.beginPath();ctx.arc(x+36,y+21,4,0,7);ctx.fill();ctx.fillStyle='#98c2a4';ctx.beginPath();ctx.arc(x+50,y+21,4,0,7);ctx.fill();fillRound(x+w*.28,y+10,w*.44,22,6,'#fff','#e2e9e7');text(label,x+w*.5,y+26,9,'600','#94a59f','center');ctx.restore();
+}
+function subtitle(copy){
+  const width=Math.min(1030,copy.length*14+80);fillRound((W-width)/2,H-70,width,42,21,'#1d2d27e8');text(copy,W/2,H-42,20,'600','#fff','center');
+}
+function callout(x,y,w,title,copy){fillRound(x,y,w,90,14,'#fffdfcee','#dde8e4');text(title,x+18,y+31,16,'700',colors.moss);text(copy,x+18,y+60,14,'400',colors.muted)}
+
+function sceneIntro(t){
+  background('#f9fbfa');const p=ease(local(t,0,1.2));ctx.globalAlpha=p;brand(74,70,1.05);eyebrow('THE WEB, WITH YOU AT THE CENTRE',W/2,180,'center');
+  const lift=(1-ease(local(t,.4,1.8)))*24;lines(['What if every website','came with a guide?'],W/2,277+lift,58,67,'650',colors.ink,'center');
+  orb(W/2,520,82,t);text('A little guidance. A world of possibility.',W/2,660,20,'400',colors.muted,'center');ctx.globalAlpha=1;
+}
+function sceneMaze(t){
+  background('#e9eeec');const a=alphaScene(t,6,15);ctx.globalAlpha=a;const zoom=1+ease(local(t,7,14))*.08;imageCover(assets.site,0,0,W,H,zoom,.43,.46);ctx.fillStyle='#16262066';ctx.fillRect(0,0,W,H);
+  lines(['Menus inside menus.','Too many places to click.'],70,130,44,54,'700','#fff');
+  const tags=[['Where do I start?',960,118],['Which form?',770,435],['Is this the right portal?',85,560],['What does that mean?',915,605]];
+  tags.forEach(([copy,x,y],i)=>{const pop=ease(local(t,7.5+i*.65,8.4+i*.65));ctx.globalAlpha=a*pop;fillRound(x,y,250,46,23,'#fff','#e2ede9');text(copy,x+125,y+30,16,'600',colors.ink,'center')});ctx.globalAlpha=a;subtitle('The web can feel like a maze.');ctx.globalAlpha=1;
+}
+function sceneAsk(t){
+  background('#f5f8f7');const a=alphaScene(t,14,25);ctx.globalAlpha=a;const x=34,y=38,w=1212,h=612;frameChrome(x,y,w,h);ctx.save();rr(x,y+42,w,h-42,0);ctx.clip();imageCover(assets.site,x,y+42,w,h-42,1.02,.5,.48);ctx.restore();
+  ctx.fillStyle='#1824204c';ctx.fillRect(x,y+42,w,h-42);fillRound(760,120,425,430,20,'#fdfefef4','#e2ede9');brand(790,160,.72);eyebrow('JUST ASK WANDER',790,205);text('What do you want to do?',790,241,25,'650');
+  fillRound(790,270,365,84,12,'#fff','#d6e3de');const prompt='Help me renew my adult passport';const chars=Math.floor(local(t,16.5,20.5)*prompt.length);text(prompt.slice(0,chars),810,317,18,'400',colors.ink);
+  fillRound(790,374,230,48,10,colors.pine);text('◉   Talk to Wander',905,405,16,'650','#fff','center');fillRound(1034,374,121,48,10,'#fff','#d7e3df');text('Hello Wander',1095,405,14,'600',colors.moss,'center');
+  text('Type it. Say it. Start hands-free.',790,465,15,'500',colors.muted);subtitle('Ask in the way that feels natural.');ctx.globalAlpha=1;
+}
+function sceneHighlight(t){
+  background('#f5f8f7');const a=alphaScene(t,24,36);ctx.globalAlpha=a;frameChrome(28,32,1224,616);ctx.save();rr(28,74,1224,574,0);ctx.clip();imageCover(assets.highlight,28,74,1224,574,1.03,.5,.45);ctx.restore();
+  const pulse=.5+.5*Math.sin(t*4);ctx.strokeStyle=`rgba(62,107,90,${.45+pulse*.45})`;ctx.lineWidth=5+pulse*3;rr(309,73,435,57,12);ctx.stroke();
+  fillRound(65,465,350,125,16,'#1d2d27ec');eyebrow('ONE STEP AT A TIME',90,500);lines(['A clear instruction.','A clear yellow marker.'],90,535,21,30,'650','#fff');subtitle('You click. You type. You stay in control.');ctx.globalAlpha=1;
+}
+function sceneAdapts(t){
+  background('#f9fbfa');const a=alphaScene(t,35,47);ctx.globalAlpha=a;brand(70,68,.9);eyebrow('GUIDANCE THAT MOVES WITH YOU',W/2,150,'center');lines(['Take a wrong turn?','Wander looks again and adapts.'],W/2,232,45,55,'650',colors.ink,'center');
+  const steps=[['1','Observe the page'],['2','Guide one action'],['3','Recheck and adapt']];steps.forEach((s,i)=>{const x=135+i*350;fillRound(x,390,300,105,18,'#fff','#dbe6e2');fillRound(x+20,414,48,48,24,i===2?colors.pine:colors.pale);text(s[0],x+44,447,18,'700',i===2?'#fff':colors.moss,'center');text(s[1],x+84,447,18,'650')});
+  ctx.strokeStyle='#c2d8d0';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(435,442);ctx.lineTo(485,442);ctx.moveTo(785,442);ctx.lineTo(835,442);ctx.stroke();
+  fillRound(392,545,496,48,24,'#edf5f2');text('Pause  ·  Resume  ·  Stop anytime',W/2,576,17,'650',colors.moss,'center');subtitle('No rigid lesson plan. No starting over.');ctx.globalAlpha=1;
+}
+function sceneWorkspace(t){
+  background('#e9f0ed');const a=alphaScene(t,46,62);ctx.globalAlpha=a;frameChrome(25,26,1230,636,'WANDER’S PRACTICE WORKSPACE');ctx.save();rr(25,68,1230,594,0);ctx.clip();imageCover(assets.dashboard,25,68,1230,594,1.05,.5,.29);ctx.restore();
+  const p=ease(local(t,49,51));ctx.globalAlpha=a*p;callout(62,115,320,'Separate practice browser','Safely explores public pages');callout(895,135,310,'Rehearsed navigation','Checks a route before guiding');callout(832,510,360,'Saved evidence','Observations and guidance files');
+  subtitle('See what Wander explored—and why it chose the next step.');ctx.globalAlpha=1;
+}
+function sceneSafety(t){
+  background('#1d2e28');const a=alphaScene(t,61,74);ctx.globalAlpha=a;brand(65,62,.85,true);eyebrow('DESIGNED AROUND YOUR CONTROL',W/2,142,'center');lines(['Wander guides.','You decide.'],W/2,228,54,62,'650','#fff','center');
+  const cards=[['◌','Passwords','Never copied to practice'],['◇','Payments','Always completed by you'],['✓','Final actions','Never submitted for you']];cards.forEach((c,i)=>{const x=92+i*390;fillRound(x,385,335,145,18,'#2b3c36','#4c635b');text(c[0],x+28,430,28,'600','#c3e7da');text(c[1],x+72,430,20,'700','#fff');text(c[2],x+28,480,15,'400','#bdccc6')});
+  subtitle('Every click, every word, every decision stays yours.');ctx.globalAlpha=1;
+}
+function sceneUses(t){
+  background('#fffaf5');const a=alphaScene(t,73,84);ctx.globalAlpha=a;eyebrow('ONE GUIDE. EVERYDAY POSSIBILITIES.',W/2,125,'center');text('Learn the web by doing.',W/2,205,50,'650',colors.ink,'center');
+  const chips=[['Government services','Forms, documents, benefits'],['Online shopping','Find, compare, understand'],['Travel','Plan and book with confidence'],['Job applications','Navigate each step'],['Everyday tasks','Find your way faster']];
+  chips.forEach((c,i)=>{const positions=[[105,300],[475,300],[845,300],[290,455],[660,455]][i];const pop=ease(local(t,74.5+i*.35,75.5+i*.35));ctx.globalAlpha=a*pop;fillRound(positions[0],positions[1],330,112,18,'#fff','#dbe6e2');orb(positions[0]+48,positions[1]+55,22,t+i);text(c[0],positions[0]+87,positions[1]+48,18,'700');text(c[1],positions[0]+87,positions[1]+76,14,'400',colors.muted)});subtitle('From “Where do I start?” to “I’ve got this.”');ctx.globalAlpha=1;
+}
+function sceneOutro(t){
+  background('#f2f9f6');const a=ease(local(t,83,85));ctx.globalAlpha=a;orb(W/2,245,95,t);brand(W/2-70,405,1.2);lines(['Wherever you\'re headed,','one step at a time.'],W/2,505,39,48,'650',colors.ink,'center');text('Open Wander. Ask a question. Find your way.',W/2,630,19,'500',colors.muted,'center');ctx.globalAlpha=1;
+}
+function render(t){
+  ctx.clearRect(0,0,W,H);
+  if(t<7)sceneIntro(t);
+  if(t>=6&&t<15.5)sceneMaze(t);
+  if(t>=14&&t<25.5)sceneAsk(t);
+  if(t>=24&&t<36.5)sceneHighlight(t);
+  if(t>=35&&t<47.5)sceneAdapts(t);
+  if(t>=46&&t<62.5)sceneWorkspace(t);
+  if(t>=61&&t<74.5)sceneSafety(t);
+  if(t>=73&&t<84.5)sceneUses(t);
+  if(t>=83)sceneOutro(t);
+}
+
+function music(context,destination,startTime){
+  const master=context.createGain();master.gain.setValueAtTime(.0001,startTime);master.gain.exponentialRampToValueAtTime(.06,startTime+2);master.gain.setValueAtTime(.06,startTime+DURATION-3);master.gain.exponentialRampToValueAtTime(.0001,startTime+DURATION);master.connect(destination);
+  const chords=[[261.63,329.63,392],[220,261.63,329.63],[174.61,220,261.63],[196,246.94,293.66]];
+  for(let beat=0;beat<DURATION;beat+=4){const chord=chords[Math.floor(beat/4)%chords.length];for(const frequency of chord){const osc=context.createOscillator(),gain=context.createGain();osc.type='sine';osc.frequency.value=frequency;gain.gain.setValueAtTime(.0001,startTime+beat);gain.gain.exponentialRampToValueAtTime(.16,startTime+beat+.8);gain.gain.exponentialRampToValueAtTime(.0001,startTime+beat+3.9);osc.connect(gain);gain.connect(master);osc.start(startTime+beat);osc.stop(startTime+beat+4)}}
+}
+
+window.wanderRenderFrame = render;
+window.renderWanderPromo = async () => {
+  const audioContext=new AudioContext({sampleRate:48000});await audioContext.resume();const audioDestination=audioContext.createMediaStreamDestination();
+  const videoStream=canvas.captureStream(0);const videoTrack=videoStream.getVideoTracks()[0];const stream=new MediaStream([videoTrack,...audioDestination.stream.getAudioTracks()]);
+  const mimeType='video/webm;codecs=vp9,opus';
+  const recorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:8000000,audioBitsPerSecond:160000});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  const finished=new Promise(resolve=>recorder.onstop=()=>resolve(new Blob(chunks,{type:mimeType})));
+  render(0);recorder.start(1000);videoTrack.requestFrame();const start=performance.now()+150;music(audioContext,audioDestination,audioContext.currentTime+.15);
+  await new Promise(resolve=>{function tick(now){const elapsed=Math.max(0,(now-start)/1000);render(Math.min(elapsed,DURATION));videoTrack.requestFrame();if(elapsed>=DURATION){resolve();return}requestAnimationFrame(tick)}requestAnimationFrame(tick)});
+  recorder.stop();const blob=await finished;await audioContext.close();return {blob,mimeType,duration:DURATION};
+};
+
+render(0);
+</script>
+</body>
+</html>
