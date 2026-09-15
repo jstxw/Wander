@@ -231,7 +231,8 @@ const server = http.createServer(async (req, res) => {
       if (endpoint === 'speech') return await streamSpeech(res, body);
       return json(res, 200, await localRequest(endpoint, body));
     }
-    catch (error) { if (!res.headersSent) return json(res, 400, { error: safeError(error) }); res.destroy(); }
+    // A response already streaming (speech cut off mid-audio) can only be closed; falling through would write a second response and crash the server.
+    catch (error) { if (!res.headersSent) return json(res, 400, { error: safeError(error) }); res.destroy(); return; }
   }
   if (req.headers.origin && !origins.has(req.headers.origin)) return json(res, 403, { error: 'Cross-origin requests are not allowed.' });
   if (req.headers['sec-fetch-site'] === 'cross-site' && req.url?.startsWith('/api/')) return json(res, 403, { error: 'Local access only.' });

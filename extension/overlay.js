@@ -24,7 +24,7 @@
     .orb-button.working .b1{animation:hop 1.1s ease-in-out infinite}.orb-button.working .b2{animation:hop 1.1s ease-in-out -.55s infinite}@keyframes hop{50%{transform:translateY(-3px)}}
     .card{position:relative;width:100%;max-height:calc(100vh - 120px);overflow:auto;scrollbar-width:none;border-radius:32px;border:1px solid rgba(255,255,255,.7);background:radial-gradient(120% 80% at 0% 0%,rgba(255,255,255,.95),rgba(255,255,255,0) 60%),radial-gradient(90% 70% at 100% 100%,rgba(226,226,231,.75),rgba(226,226,231,0) 70%),radial-gradient(60% 50% at 100% 0%,rgba(242,242,245,.8),rgba(242,242,245,0) 70%),rgba(250,250,252,.8);-webkit-backdrop-filter:blur(40px) saturate(180%);backdrop-filter:blur(40px) saturate(180%);box-shadow:0 0 0 .5px rgba(0,0,0,.08),0 30px 80px rgba(0,0,0,.22),0 8px 24px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.9);animation:rise .34s cubic-bezier(.2,.8,.2,1)}
     .card::-webkit-scrollbar{display:none}@keyframes rise{from{opacity:0;transform:translateY(8px) scale(.98)}}
-    .head{padding:22px 22px 0 26px;display:flex;align-items:center}
+    .head{padding:22px 22px 0 26px;display:flex;align-items:center;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}.orb-button{touch-action:none}.wrap.dragging .head,.wrap.dragging .orb-button{cursor:grabbing}.wrap.dragging .orb-button{transform:none}
     .brand{font-size:15px;font-weight:600;letter-spacing:-.02em;display:flex;align-items:center;gap:9px}.brand svg{width:26px;height:26px}
     .minimize{margin-left:auto;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.05);color:#6e6e73;font-size:18px;line-height:1;display:grid;place-items:center;transition:background .15s}.minimize:hover{background:rgba(0,0,0,.09)}
     .body{padding:30px 26px 22px}
@@ -177,10 +177,54 @@
   $('form').onsubmit = event => { event.preventDefault(); submit(); };
   $('task').onkeydown = event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); } };
   // Remember whether the panel is open so it stays open when the learner moves to another page or site.
-  const setPanelOpen = open => { $('card').hidden = !open; chrome.storage.local.set({ panelOpen: open }).catch(() => {}); };
-  $('orb').onclick = () => setPanelOpen($('card').hidden);
+  // The learner can drag the widget by its button or title row. `desired` is where they put it; it is kept on screen whenever shown.
+  const wrap = root.querySelector('.wrap'), head = root.querySelector('.head');
+  let desired = null, drag = null, suppressClickUntil = 0;
+  function place() {
+    if (!desired) return;
+    const margin = 8, box = wrap.getBoundingClientRect(), part = ($('card').hidden ? $('orb') : wrap).getBoundingClientRect();
+    const dx = part.left - box.left, dy = part.top - box.top;
+    const left = Math.round(Math.min(Math.max(desired.left, margin - dx), innerWidth - margin - dx - part.width));
+    const top = Math.round(Math.min(Math.max(desired.top, margin - dy), innerHeight - margin - dy - part.height));
+    host.style.cssText = `all:initial!important;position:fixed!important;left:${left}px!important;top:${top}px!important;z-index:2147483647!important;display:block!important;`;
+  }
+  const setPanelOpen = open => { $('card').hidden = !open; place(); chrome.storage.local.set({ panelOpen: open }).catch(() => {}); };
+  $('orb').onclick = () => { if (Date.now() < suppressClickUntil) return; setPanelOpen($('card').hidden); };
   $('minimize').onclick = () => setPanelOpen(false);
-  chrome.storage.local.get('panelOpen').then(saved => { if (saved.panelOpen === true) $('card').hidden = false; }).catch(() => {});
+  const startDrag = event => {
+    if (event.button !== 0 || (event.currentTarget === head && event.target.closest('button'))) return;
+    const box = wrap.getBoundingClientRect();
+    drag = { pointerId: event.pointerId, handle: event.currentTarget, x: event.clientX, y: event.clientY, left: box.left, top: box.top, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.currentTarget === head) event.preventDefault();
+  };
+  const moveDrag = event => {
+    if (event.pointerId !== drag?.pointerId) return;
+    const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    // Presses that move less than 5 px stay clicks.
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true; wrap.classList.add('dragging');
+    desired = { left: drag.left + dx, top: drag.top + dy }; place();
+  };
+  const endDrag = event => {
+    if (event.pointerId !== drag?.pointerId) return;
+    if (drag.moved) {
+      if (drag.handle === $('orb')) suppressClickUntil = Date.now() + 300;
+      chrome.storage.local.set({ widgetPosition: desired }).catch(() => {});
+    }
+    wrap.classList.remove('dragging'); drag = null;
+  };
+  for (const handle of [$('orb'), head]) {
+    handle.addEventListener('pointerdown', startDrag); handle.addEventListener('pointermove', moveDrag);
+    handle.addEventListener('pointerup', endDrag); handle.addEventListener('pointercancel', endDrag);
+  }
+  addEventListener('resize', place);
+  chrome.storage.local.get(['panelOpen', 'widgetPosition']).then(saved => {
+    if (saved.panelOpen === true) $('card').hidden = false;
+    const position = saved.widgetPosition;
+    if (Number.isFinite(position?.left) && Number.isFinite(position?.top)) desired = { left: position.left, top: position.top };
+    place();
+  }).catch(() => {});
   $('setup').onclick = () => act('WANDER_SETUP'); $('settings').onclick = () => act('WANDER_SETUP');
   $('pause').onclick = () => act('WANDER_PAUSE'); $('resume').onclick = async () => { await act('WANDER_RESUME', { answer: $('task').value.trim() }); if (state?.run?.status === 'running') $('task').value = ''; }; $('stop').onclick = () => act('WANDER_STOP');
   function setWakeListening(value) { wakeListening = value; render(); }
