@@ -9,6 +9,7 @@ import { Budget, MAX_STEPS, saveJson } from './budget.mjs';
 import { allowedUrl } from './browser.mjs';
 import { plan } from './planner.mjs';
 import { SteelComputer } from './computer.mjs';
+import { LocalComputer } from './local-computer.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const envFile = path.join(root, '.env.local');
@@ -87,12 +88,15 @@ async function localRequest(endpoint, body) {
   if (endpoint === 'state') return state();
   if (endpoint === 'connect') {
     if (!configured()) throw new Error('Save your keys in the Wander workspace first.');
-    if (connecting) throw new Error('Steel is already starting.');
+    if (connecting) throw new Error('The tutor is already starting.');
     connecting = true;
     try {
-      computer ||= new SteelComputer({ key: process.env.STEEL_API_KEY, stateFile: path.join(dataDir, 'computer.json') });
+      // Steel Computer is opt-in. By default the tutor runtime runs here and only the practice browser uses Steel.
+      computer ||= process.env.WANDER_RUNNER === 'steel'
+        ? new SteelComputer({ key: process.env.STEEL_API_KEY, stateFile: path.join(dataDir, 'computer.json') })
+        : new LocalComputer({ key: process.env.STEEL_API_KEY, root: path.join(dataDir, 'runtime') });
       await computer.ensure();
-      log('info', 'Preparing the tutor workspace and browser tools on Steel Computer…');
+      log('info', `Preparing the tutor workspace and browser tools on ${computer instanceof LocalComputer ? 'this computer' : 'Steel Computer'}…`);
       await computer.prepareTutor();
       log('success', 'Tutor workspace ready. You stay in control of every click.');
       return state();
@@ -100,7 +104,7 @@ async function localRequest(endpoint, body) {
   }
   if (endpoint === 'start') {
     if (localStep || connecting || run?.status === 'running') throw new Error('Stop or resume the existing task first.');
-    if (!computer?.ready) throw new Error('Connect Steel Computer first.');
+    if (!computer?.ready) throw new Error('Prepare the tutor workspace first.');
     const task = typeof body.task === 'string' ? body.task.trim() : '';
     if (!task || task.length > 1500) throw new Error('Enter a short task, up to 1,500 characters.');
     if (run?.tutor) { try { await computer.releaseTutor(run.id); } catch (error) { log('info', safeError(error)); } }
@@ -149,7 +153,7 @@ async function localRequest(endpoint, body) {
     localStep = (async () => {
       try {
         active.phase = 'exploring'; active.message = 'Checking this step in Wander’s practice browser…';
-        log('info', 'Steel Computer is inspecting the public page and saving evidence.');
+        log('info', 'Inspecting the public page in the practice browser and saving evidence.');
         const inspected = await computer.inspect(observation.url, active.id, controller.signal);
         if (active.status !== 'running') return { state: state(), action: null };
         active.evidence = inspected.evidence; active.workspace = inspected.workspace;

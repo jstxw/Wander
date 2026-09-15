@@ -1,7 +1,7 @@
 # Wander
 
 >[!NOTE]
->Wander depends on Steel Computer features that may still be in beta. Your Steel account needs Computer access.
+>By default Wander runs its tutor on your computer and uses Steel only for the isolated practice browser. Set `WANDER_RUNNER=steel` in `.env.local` to run the tutor on Steel Computer (beta) instead.
 
 Wander is a Chrome tutoring extension that teaches people how to use websites, one highlighted step at a time.
 
@@ -14,7 +14,8 @@ To improve its guidance, Wander can inspect and rehearse safe public navigation 
 - [Node.js](https://nodejs.org/) 22 or newer
 - Google Chrome
 - An OpenAI API key
-- A Steel API key with Computer access and available credits
+- A Steel API key with available credits (Steel Computer access is only needed with `WANDER_RUNNER=steel`)
+- Python 3.9 or newer (Wander installs Playwright into `.wander/runtime` on first use)
 
 OpenAI and Steel usage are billed separately.
 
@@ -72,15 +73,15 @@ Open the website you want to learn, expand the Wander panel, and try:
 
 > Show me how to search this website.
 
-Wander will inspect the website and then highlight one control in yellow. Follow the instruction yourself, then use **Check my progress** if Wander does not automatically detect the page change.
+Wander will inspect the website and then highlight one control with a black-and-white marker. Follow the instruction yourself, then use **Check my progress** if Wander does not automatically detect the page change.
 
-The first question can take a few minutes while Wander prepares Steel Computer, installs its remote Python environment, and starts an isolated Steel Browser. Later questions can reuse the prepared computer.
+The first question can take a few minutes while Wander sets up its Python environment and starts an isolated Steel Browser. Later questions reuse that setup.
 
 ## Using Wander
 
 - Type a question in the floating panel or click **Talk to Wander**.
 - Click the green Wander button to open or close the panel. Spoken guidance does not open it automatically.
-- Follow the yellow marker in your own tab; Wander never performs the highlighted action for you.
+- Follow the highlighted marker in your own tab; Wander never performs the highlighted action for you.
 - Use **Pause**, **Resume**, or **Stop** to control the current question.
 - If “Hello Wander” is enabled, say **“Hello Wander, resume”** to continue a paused question.
 - Open **Settings** to choose a model or switch between a browser voice.

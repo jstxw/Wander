@@ -1,4 +1,4 @@
-"""Wander's remote tutor workspace. Runs on Steel Computer; never on the learner's tab."""
+"""Wander's tutor workspace. Runs on Steel Computer or on this machine; never on the learner's tab."""
 import base64
 import ipaddress
 import json
@@ -12,8 +12,10 @@ import urllib.request
 import urllib.error
 from urllib.parse import urlparse, urlunparse
 
-RUNTIME_ROOT = Path('/tmp/wander-agent')
+RUNTIME_ROOT = Path(os.environ.get('WANDER_RUNTIME_ROOT', '/tmp/wander-agent'))
 ROOT = RUNTIME_ROOT / 'missions'
+# Steel's API sits behind Cloudflare, which rejects Python-urllib's default User-Agent with error 1010.
+USER_AGENT = 'Wander/0.1 (+tutor-runtime)'
 BLOCKED = re.compile(r'(?:^|[/_?=&.-])(?:checkout|payment|purchase|order|logout|delete|remove|unsubscribe|confirm|submit|reserve|booking|sign.?in|login|oauth|account|token|password)(?:$|[/_?=&.-])', re.I)
 
 
@@ -33,7 +35,7 @@ def public_url(value):
 def steel(endpoint, body=None):
     req = urllib.request.Request('https://api.steel.dev/v1' + endpoint,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={'steel-api-key': os.environ['STEEL_API_KEY'], 'Content-Type': 'application/json'})
+        headers={'steel-api-key': os.environ['STEEL_API_KEY'], 'Content-Type': 'application/json', 'User-Agent': USER_AGENT})
     with urllib.request.urlopen(req, timeout=25) as response:
         return json.load(response) if response.status != 204 else {}
 
@@ -186,7 +188,7 @@ def main(operation, payload, run_id):
         raise ValueError('Unknown operation')
     # The request is already budget-reserved by the local server. Never retry a paid call.
     req = urllib.request.Request('https://api.openai.com/v1/chat/completions', data=json.dumps(payload).encode(),
-        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'})
+        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json', 'User-Agent': USER_AGENT})
     with urllib.request.urlopen(req, timeout=30) as response:
         data = json.load(response)
     state['decisions'] += 1

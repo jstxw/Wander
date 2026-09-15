@@ -154,7 +154,7 @@ async function startTutor(tabId, message) {
   if (!isWebUrl(tab.url) || tab.url.startsWith(SERVER)) throw new Error('Open Wander on the website you want to learn first.');
   preparing = true;
   try {
-    await notify(tabId, null, 'Starting your agent on Steel Computer…');
+    await notify(tabId, null, 'Preparing your tutor…');
     const serverState = await request('state');
     if (['running', 'paused', 'waiting'].includes(serverState.run?.status)) {
       await request('stop', { runId: serverState.run.id });

@@ -37,6 +37,23 @@ test('corrupt ledger fails closed', t => {
   const { file } = fixture(t); fs.writeFileSync(file, '{"spent":-1,"calls":0}');
   assert.throws(() => new Budget(file), /Invalid budget/);
 });
+test('oversized page snapshots are trimmed to fit the request limit without losing element IDs', async t => {
+  const { budget, run } = fixture(t); let requested;
+  const long = (n, ch) => ch.repeat(n);
+  // Worst case seen on image-heavy result pages: 65 links with long hrefs and card context, a full text block, full evidence and memory.
+  const elements = Array.from({ length: 65 }, (_, i) => ({ id: i + 1, tag: 'a', role: null, type: '', label: long(90, 'L'), sensitive: false, disabled: false, href: 'https://www.google.com/imgres?imgurl=' + long(212, 'h'), context: long(260, 'c') }));
+  const observation = { readyState: 'complete', url: 'https://www.google.com/search?q=speakers&udm=2', title: 'speakers', text: long(6500, 't'), elements };
+  Object.assign(run, { tutor: true, memory: Array.from({ length: 8 }, () => ({ page: long(500, 'p'), task: long(1500, 'q'), status: 'done', outcome: long(1000, 'o') })),
+    evidence: { title: 'speakers', url: observation.url, text: long(2200, 's'), elements: elements.slice(0, 15), previouslyObservedNavigation: [] } });
+  const action = await plan({ key: 'test-key', task: 'Show me the best speaker', observation, history: [], budget, run, signal: new AbortController().signal,
+    fetcher: async (_, options) => { requested = options.body; return Response.json({ usage: { prompt_tokens: 100, completion_tokens: 20 }, choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ action: 'click', target: 65, value: '', message: 'Click the last result.' }) } }] }); }
+  });
+  assert.ok(Buffer.byteLength(requested) <= 48000, `request was ${Buffer.byteLength(requested)} bytes`);
+  const page = JSON.parse(JSON.parse(requested).messages[1].content).PAGE;
+  assert.deepEqual(page.elements.map(e => e.id), elements.map(e => e.id));
+  assert.equal(action.action, 'click');
+  assert.equal(observation.elements[0].context.length, 260, 'the caller observation is not mutated');
+});
 test('Luna request disables reasoning, enforces structured output, and charges usage', async t => {
   const { budget, run } = fixture(t); let requested;
   const result = await plan({ key: 'test-key', task: 'Find eggs', observation: {}, history: [], budget, run, signal: new AbortController().signal,

@@ -21,7 +21,7 @@ async function refresh() {
   $('connectionLabel').textContent = 'Wander connected'; $('connectionDot').classList.add('online');
   $('landingNotice').hidden = current.configured; $('landingNotice').textContent = 'Open Settings to connect your keys.';
   for (const name of ['openai','steel','elevenlabs']) $(name+'Status').textContent = current.keys[name] ? 'Saved · leave blank to keep' : '';
-  $('landingBudget').textContent = `${current.budget.spent.toFixed(3)} USD used of ${current.budget.limit.toFixed(2)} USD tracked OpenAI budget. Steel usage is separate.`;
+  $('landingBudget').textContent = `${current.budget.spent.toFixed(3)} USD used of ${current.budget.limit.toFixed(2)} USD tracked OpenAI budget. Practice browser usage is billed separately.`;
  } catch { $('connectionLabel').textContent = 'Server unavailable'; $('connectionDot').classList.remove('online'); }
 }
 let selectedVoice = 'browser-default';
@@ -65,9 +65,8 @@ $('pairButton').onclick = async () => {
 };
 $('aboutButton').onclick = () => { refresh(); $('aboutWander').showModal(); };
 $('closeAbout').onclick = () => $('aboutWander').close();
-document.querySelector('#settings .settings-info p').textContent = 'Up to 60 guidance steps and $0.25 per task; $1.80 total tracked OpenAI usage. Steel uses separate credits.';
+document.querySelector('#settings .settings-info p').textContent = 'Up to 60 guidance steps and $0.25 per task; $1.80 total tracked OpenAI usage. Practice browser usage is billed separately.';
 refresh(); setInterval(refresh,10000);
-if (extensionId) $('settingsButton').click();
 const waypoints = [...document.querySelectorAll('.waypoint')];
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 let motionPaused = motionPreference.matches, wanderTime = 0, lastFrame = 0, trailPoint, trailStops = waypoints;

@@ -6,6 +6,7 @@ export const MAX_OUTPUT = 450;
 export const TOTAL_LIMIT = 1.80;
 export const RUN_LIMIT = 0.25;
 export const MAX_STEPS = 60;
+export const REQUEST_BYTE_LIMIT = 48000;
 // Luna: $0.20/M input, $1.20/M output. Conservatively allow the 1.25x cache-write rate on all input.
 export const RATES = { 'gpt-5.6-luna': [0.25, 1.2], 'gpt-5.6-sol': [5, 20], 'gpt-6-astra': [12.5, 50] };
 export const cost = (input, output, model = MODEL) => { const rates = RATES[model]; if (!rates) throw new Error('Unknown model pricing.'); return (input * rates[0] + output * rates[1]) / 1_000_000; };
@@ -28,7 +29,7 @@ export class Budget {
   reserve(body, run) {
     // A UTF-8 byte per token is deliberately conservative. Include schema and message overhead.
     const bytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
-    if (bytes > 48000) throw new Error('Page snapshot exceeded the request size limit.');
+    if (bytes > REQUEST_BYTE_LIMIT) throw new Error('Page snapshot exceeded the request size limit.');
     const amount = cost(bytes + 2048, body.max_completion_tokens || MAX_OUTPUT, body.model);
     if (this.data.spent + amount > TOTAL_LIMIT) throw new Error('The $1.80 app budget is reached. No more model calls will be made.');
     if (run.spent + amount > RUN_LIMIT) throw new Error('This task reached its $0.25 budget. Start a new task only if you want to continue.');
