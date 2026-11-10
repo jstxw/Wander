@@ -3,9 +3,19 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { snapshotPage } from '../extension/page-tools.js';
 
 const PYTHON_CANDIDATES = ['python3.13', 'python3.12', 'python3.11', 'python3'];
+
+// The bundled interpreter comes from scripts/fetch-python.mjs (development) or the packaged
+// app's resources folder (Electron sets WANDER_PYTHON_HOME). It already contains Playwright.
+export function bundledPython(env = process.env) {
+  const home = env.WANDER_PYTHON_HOME
+    || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'vendor', 'python', `${process.platform}-${process.arch}`);
+  const executable = process.platform === 'win32' ? path.join(home, 'python.exe') : path.join(home, 'bin', 'python3');
+  return fs.existsSync(executable) ? executable : null;
+}
 
 function run(command, args, { env, timeout, signal } = {}) {
   return new Promise(resolve => {
@@ -16,11 +26,19 @@ function run(command, args, { env, timeout, signal } = {}) {
 }
 
 export class LocalComputer {
-  constructor({ key, root }) {
-    this.key = key; this.root = root; this.python = path.join(root, 'venv', 'bin', 'python');
+  constructor({ key, root, python = bundledPython() }) {
+    this.key = key; this.root = root;
+    // Without a bundled interpreter (a source checkout that skipped `npm run fetch-python`), fall back to a venv from system Python.
+    this.bundled = Boolean(python);
+    this.python = python || path.join(root, 'venv', 'bin', 'python');
     this.ready = false; this.tutorReady = false; this.pending = null;
   }
-  env(extra = {}) { return { PATH: process.env.PATH, HOME: process.env.HOME, WANDER_RUNTIME_ROOT: this.root, ...extra }; }
+  env(extra = {}) {
+    // PYTHONNOUSERSITE keeps the user's own packages out; PYTHONDONTWRITEBYTECODE keeps a signed app bundle unmodified.
+    const base = { PATH: process.env.PATH, HOME: process.env.HOME, WANDER_RUNTIME_ROOT: this.root, PYTHONNOUSERSITE: '1', PYTHONDONTWRITEBYTECODE: '1' };
+    if (process.env.SYSTEMROOT) base.SYSTEMROOT = process.env.SYSTEMROOT; // Windows needs it for sockets and randomness.
+    return { ...base, ...extra };
+  }
   async ensure() {
     if (this.ready) return this.publicState();
     this.pending ||= this.prepare().finally(() => { this.pending = null; });
@@ -48,6 +66,7 @@ export class LocalComputer {
     if (this.tutorReady) return;
     // The practice browser is reached over CDP, so only the Playwright client is needed, not a local browser download.
     const installed = await run(this.python, ['-c', 'import playwright'], { env: this.env(), timeout: 15000 });
+    if (installed.exitCode !== 0 && this.bundled) throw new Error('The bundled Python is missing Playwright. Run npm run fetch-python, or reinstall Wander.');
     if (installed.exitCode !== 0) {
       const install = await run(this.python, ['-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', 'playwright==1.58.0'], { env: this.env(), timeout: 190000 });
       if (install.exitCode !== 0 || install.timedOut) throw new Error('Could not install the tutor browser tools locally. Check your internet connection and try again.');
@@ -80,5 +99,5 @@ export class LocalComputer {
   }
   // Nothing to pause: there is no remote machine. Steel Browser sessions are released per task.
   async pause() {}
-  publicState() { return { id: 'local', status: 'running', ready: this.ready, transport: 'This computer' }; }
+  publicState() { return { id: 'local', status: 'running', ready: this.ready, transport: this.bundled ? 'This computer (bundled Python)' : 'This computer' }; }
 }

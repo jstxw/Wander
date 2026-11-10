@@ -7,3 +7,6 @@ artifacts/
 .DS_Store
 __pycache__/
 *.pyc
+vendor/python/
+build/
+out/
