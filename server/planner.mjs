@@ -65,7 +65,8 @@ export function normalizeActionMessage(action, step = 0) {
   return `${step > 0 ? 'Next' : 'First'}, ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
 }
 
-export async function plan({ key, task, observation, history, budget, run, signal, fetcher = fetch }) {
+// Picks the model for this step: economy by default, escalating in dynamic mode when the learner seems stuck.
+export function chooseModel(run, observation, history) {
   const mode = run.modelMode || 'economy';
   const stuck = (run.waitCount || 0) >= 1 || history.slice(-2).filter(h => /failed/i.test(h.result || '')).length >= 2;
   const fingerprint = JSON.stringify(observation);
@@ -74,6 +75,32 @@ export async function plan({ key, task, observation, history, budget, run, signa
   if (mode === 'dynamic' && (stuck || run.unchanged >= 2)) run.escalated = true;
   const model = mode === 'high' || (mode === 'dynamic' && run.escalated) ? 'gpt-6-astra' : MODEL;
   run.model = model;
+  return model;
+}
+
+// One budgeted chat-completions request that must return a JSON object. Never retries a paid request.
+export async function complete({ key, body, budget, run, model, signal, fetcher = fetch, timeout }) {
+  const reservation = budget.reserve(body, run);
+  const response = await fetcher('https://api.openai.com/v1/chat/completions', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)])
+  });
+  if (!response.ok) {
+    // Do not echo provider error bodies: authentication failures can contain portions of credentials.
+    throw new Error(response.status === 429 ? 'OpenAI has no available quota or is rate limited. Check your API billing; no retry was made.' : `OpenAI request failed (HTTP ${response.status}). Check your key and account access. No retry was made.`);
+  }
+  const data = await response.json();
+  budget.settle(reservation, data.usage, run, model);
+  const choice = data.choices?.[0];
+  if (choice?.message?.refusal) throw new Error('The model declined this task.');
+  if (choice?.finish_reason !== 'stop') throw new Error('The model response was incomplete. No action was taken.');
+  let action;
+  try { action = JSON.parse(choice.message.content); } catch { throw new Error('Invalid model response. No action was taken.'); }
+  return { action, data };
+}
+
+export async function plan({ key, task, observation, history, budget, run, signal, fetcher = fetch }) {
+  const model = chooseModel(run, observation, history);
   const user = { task, tabMemory: run.memory || [], recentActions: history.slice(-5), PAGE: observation, ...(run.tutor ? { SHADOW: run.evidence || null } : {}) };
   const build = () => ({
     model,
@@ -91,23 +118,8 @@ export async function plan({ key, task, observation, history, budget, run, signa
     if (Buffer.byteLength(JSON.stringify(body), 'utf8') <= REQUEST_BYTE_LIMIT) break;
     trim(user); body = build();
   }
-  const reservation = budget.reserve(body, run);
-  const response = await fetcher('https://api.openai.com/v1/chat/completions', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(run.tutor ? 110000 : 45000)])
-  });
-  if (!response.ok) {
-    // Do not echo provider error bodies: authentication failures can contain portions of credentials.
-    throw new Error(response.status === 429 ? 'OpenAI has no available quota or is rate limited. Check your API billing; no retry was made.' : `OpenAI request failed (HTTP ${response.status}). Check your key and account access. No retry was made.`);
-  }
-  const data = await response.json();
-  budget.settle(reservation, data.usage, run, model);
+  const { action, data } = await complete({ key, body, budget, run, model, signal, fetcher, timeout: run.tutor ? 110000 : 45000 });
   if (run.tutor && data.wanderWorkspace) run.workspace = data.wanderWorkspace;
-  const choice = data.choices?.[0];
-  if (choice?.message?.refusal) throw new Error('The model declined this task.');
-  if (choice?.finish_reason !== 'stop') throw new Error('The model response was incomplete. No action was taken.');
-  let action;
-  try { action = JSON.parse(choice.message.content); } catch { throw new Error('Invalid model response. No action was taken.'); }
   if (!schema.properties.action.enum.includes(action.action) || !Number.isInteger(action.target) || typeof action.value !== 'string' || typeof action.message !== 'string' || action.value.length > 2000 || action.message.length > 1000) {
     throw new Error('Unexpected model action. No action was taken.');
   }

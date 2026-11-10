@@ -2,22 +2,27 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Budget, MAX_STEPS, saveJson } from './budget.mjs';
 import { allowedUrl } from './browser.mjs';
 import { plan } from './planner.mjs';
+import { planDesktop, validateDesktopObservation } from './desktop-planner.mjs';
 import { SteelComputer } from './computer.mjs';
 import { LocalComputer } from './local-computer.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const envFile = path.join(root, '.env.local');
+// The desktop app points this at ~/Library/Application Support/Wander, since the app bundle is read-only.
+const envFile = process.env.WANDER_ENV_FILE || path.join(root, '.env.local');
 if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 const port = Number(process.env.PORT || 4318);
 const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
 const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 const dataDir = process.env.WANDER_DATA_DIR || path.join(root, '.wander');
+// Set by the desktop app for each launch; kept out of the environment that child processes inherit.
+const desktopToken = /^[a-f0-9]{64}$/.test(process.env.WANDER_DESKTOP_TOKEN || '') ? process.env.WANDER_DESKTOP_TOKEN : null;
+delete process.env.WANDER_DESKTOP_TOKEN;
 const budget = new Budget(path.join(dataDir, 'budget.json'));
 const pairFile = path.join(dataDir, 'extension-pair.json');
 const pairing = fs.existsSync(pairFile) ? JSON.parse(fs.readFileSync(pairFile, 'utf8')) : { token: randomBytes(32).toString('hex') };
@@ -210,6 +215,71 @@ async function localRequest(endpoint, body) {
   throw new Error('Unknown current-tab action.');
 }
 
+// Native Mac app lessons, requested only by the Electron main process. They share `run`, the budget and
+// stop behaviour with browser lessons, so only one lesson is active across both surfaces.
+const afterStep = {
+  changed: 'The window changed after this step. Verify the outcome in WINDOW; do not assume success.',
+  targetLost: 'The highlighted control disappeared, often because the user acted on it. Verify the outcome in WINDOW.',
+  check: 'The user asked Wander to check their progress. Verify the outcome in WINDOW.',
+  stale: 'The chosen control could not be highlighted because the window had changed. Choose again from the current WINDOW.',
+  answered: 'The user handled the requested step and continued.'
+};
+async function desktopRequest(endpoint, body) {
+  if (endpoint === 'state') return state();
+  if (endpoint === 'start') {
+    if (localStep || connecting || run?.status === 'running') throw new Error('Another Wander lesson is running. Stop it first.');
+    if (!process.env.OPENAI_API_KEY) throw new Error('Add your OpenAI key in Wander Settings first.');
+    const task = typeof body.task === 'string' ? body.task.trim() : '';
+    if (!task || task.length > 1500) throw new Error('Enter a short question, up to 1,500 characters.');
+    if (run?.tutor) releasePractice(run);
+    run = { id: randomUUID(), mode: 'desktop', modelMode: 'dynamic', task, app: String(body.app || '').slice(0, 80), status: 'running', phase: 'exploring',
+      message: 'Reading the app window…', spent: 0, steps: 0, history: [], memory: [], pendingAction: null };
+    controller = new AbortController(); log('user', task); return state();
+  }
+  if (!run || run.mode !== 'desktop' || body.runId !== run.id) throw new Error('This lesson is no longer active.');
+  if (endpoint === 'stop') { await stop('stopped'); return state(); }
+  if (endpoint === 'step') {
+    if (localStep) throw new Error('Wander is already choosing a step.');
+    if (!['running', 'waiting'].includes(run.status)) throw new Error('This lesson has ended. Ask a new question to continue.');
+    const observation = validateDesktopObservation(body.observation);
+    if (run.pendingAction) {
+      run.history.push({ step: run.pendingAction.message, result: afterStep[body.reason] || afterStep.check });
+      run.pendingAction = null;
+    } else if (run.status === 'waiting') run.history.push({ result: afterStep.answered });
+    run.status = 'running';
+    if (run.steps >= MAX_STEPS) { run.status = 'limited'; run.message = `Reached the ${MAX_STEPS}-step limit. Ask a new question to keep going.`; return { state: state(), action: null }; }
+    if (controller?.signal.aborted) controller = new AbortController();
+    const active = run;
+    localStep = (async () => {
+      try {
+        active.message = 'Choosing your next step…';
+        const action = await planDesktop({ key: process.env.OPENAI_API_KEY, task: active.task, observation, history: active.history, budget, run: active, signal: controller.signal });
+        if (active.status !== 'running') return { state: state(), action: null };
+        // The model may only point at a control from the snapshot the helper submitted.
+        if (action.action === 'point' && !observation.controls.some(control => control.id === action.target)) {
+          active.status = 'waiting'; active.message = 'Wander chose a control that is not in this window. Click Check my progress to try again.';
+          log('error', active.message); return { state: state(), action: null };
+        }
+        active.steps++; active.message = action.message;
+        if (action.action === 'done' || action.action === 'ask') {
+          active.status = action.action === 'done' ? 'done' : 'waiting'; active.phase = action.action === 'done' ? 'complete' : 'needs-you';
+          log(action.action === 'done' ? 'success' : 'question', action.message);
+          return { state: state(), action: null };
+        }
+        active.phase = 'your-turn';
+        action.id = randomUUID(); action.snapshotId = observation.snapshotId;
+        active.pendingAction = action; log('action', action.message);
+        return { state: state(), action };
+      } catch (error) {
+        if (active.status === 'running') { active.status = 'error'; active.message = safeError(error); log('error', active.message); }
+        return { state: state(), action: null };
+      }
+    })();
+    try { return await localStep; } finally { localStep = null; }
+  }
+  throw new Error('Unknown desktop action.');
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -217,6 +287,14 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src https://*.steel.dev; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
   if (!hosts.has(req.headers.host)) return json(res, 403, { error: 'Local access only.' });
+  if (req.url?.startsWith('/api/desktop/')) {
+    // Only Electron main holds this per-launch token. Browsers always send Origin on POST, so refuse any request that has one.
+    const expected = desktopToken ? Buffer.from(`Bearer ${desktopToken}`) : null;
+    const given = Buffer.from(req.headers.authorization || '');
+    if (!expected || req.headers.origin || req.method !== 'POST' || given.length !== expected.length || !timingSafeEqual(given, expected)) return json(res, 403, { error: 'Desktop app access only.' });
+    try { return json(res, 200, await desktopRequest(req.url.slice('/api/desktop/'.length), await readBody(req))); }
+    catch (error) { return json(res, 400, { error: safeError(error) }); }
+  }
   if (req.url?.startsWith('/api/local/')) {
     const origin = req.headers.origin;
     if (origin && !/^chrome-extension:\/\/[a-p]{32}$/.test(origin) && !origins.has(origin)) return json(res, 403, { error: 'Extension access only.' });
@@ -258,6 +336,7 @@ const server = http.createServer(async (req, res) => {
         if (typeof openai !== 'string' || !/^sk-[A-Za-z0-9_\-]{16,}$/.test(openai) || typeof steel !== 'string' || !/^ste[-_][A-Za-z0-9_\-]{12,}$/.test(steel)) throw new Error('Enter valid OpenAI (sk-…) and Steel (ste-…) keys.');
         if (elevenlabs && (typeof elevenlabs !== 'string' || elevenlabs.length < 16 || /\s/.test(elevenlabs))) throw new Error('Enter a valid ElevenLabs API key, or leave it blank.');
         if (fs.existsSync(envFile) && fs.lstatSync(envFile).isSymbolicLink()) throw new Error('Cannot save to a symlink.');
+        fs.mkdirSync(path.dirname(envFile), { recursive: true, mode: 0o700 });
         fs.writeFileSync(`${envFile}.tmp`, `OPENAI_API_KEY=${openai}\nSTEEL_API_KEY=${steel}\n${elevenlabs ? `ELEVENLABS_API_KEY=${elevenlabs}\n` : ''}${elevenlabsVoice ? `ELEVENLABS_VOICE_ID=${elevenlabsVoice}\n` : ''}`, { mode: 0o600 });
         fs.renameSync(`${envFile}.tmp`, envFile);
         process.env.OPENAI_API_KEY = openai; process.env.STEEL_API_KEY = steel;
@@ -298,3 +377,5 @@ async function shutdown() {
   server.close(() => process.exit(0));
 }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
+// Under Electron the server runs as a utility process; the desktop app asks it to stop through parentPort.
+process.parentPort?.on('message', event => { if (event.data === 'shutdown') shutdown(); });
