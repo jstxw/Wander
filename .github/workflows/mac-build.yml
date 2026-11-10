@@ -1,0 +1,26 @@
+name: Mac build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mac-app]
+
+jobs:
+  dmg:
+    runs-on: macos-14   # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run tests
+        run: npm install --no-audit --no-fund && npm test
+      - name: Build Wander.dmg
+        run: bash scripts/build-mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wander-mac-arm64
+          path: |
+            out/make/**/*.dmg
+            out/make/**/*.zip
+          if-no-files-found: error
