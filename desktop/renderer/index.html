@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>Wander</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Wander</div>
+    <div class="server" id="server"><span class="dot"></span><span id="server-text">Starting…</span></div>
+  </header>
+
+  <main>
+    <section class="step" id="step" hidden>
+      <div class="step-head">
+        <span class="pill" id="step-pill">Thinking</span>
+        <span class="step-app" id="step-app"></span>
+      </div>
+      <p class="step-message" id="step-message"></p>
+      <p class="step-shortcut" id="step-shortcut" hidden></p>
+      <div class="row">
+        <button id="check" type="button">Check my progress</button>
+        <button id="stop" type="button" class="quiet">Stop</button>
+      </div>
+    </section>
+
+    <section class="card" id="permission-card" hidden>
+      <h2>Allow Accessibility access</h2>
+      <p>Wander reads the buttons and menus of the app you choose so it can highlight the next one. It never clicks or types for you.</p>
+      <ol>
+        <li>Click <b>Open System Settings</b>.</li>
+        <li>Turn on <b>Wander</b> under Privacy &amp; Security → Accessibility.</li>
+        <li>Come back and click <b>Check again</b>.</li>
+      </ol>
+      <div class="row">
+        <button id="grant" type="button">Open System Settings</button>
+        <button id="recheck" type="button" class="quiet">Check again</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Guide this Mac app</h2>
+      <label for="app">App</label>
+      <div class="row">
+        <select id="app"></select>
+        <button id="refresh" type="button" class="quiet" title="Refresh the list of open apps">Refresh</button>
+      </div>
+      <label for="task">What do you want to do?</label>
+      <textarea id="task" rows="3" maxlength="1500" placeholder="Show me how to make a new folder"></textarea>
+      <div class="row">
+        <button id="ask" type="button">Guide me</button>
+        <button id="demo" type="button" class="quiet">Try the Finder demo</button>
+      </div>
+      <p class="hint">The Finder demo highlights the List View control without using OpenAI, so you can test the highlight first.</p>
+    </section>
+
+    <section class="card">
+      <h2>Guide this tab</h2>
+      <p>For websites, use the Wander extension in Chrome. Open any website, click the black Wander button on the right, and ask your question there.</p>
+      <div class="row">
+        <button id="extension" type="button" class="quiet">Get the Chrome extension</button>
+        <button id="settings" type="button" class="quiet">Open Settings in Chrome</button>
+      </div>
+      <dl class="keys">
+        <div><dt>OpenAI key</dt><dd id="key-openai">–</dd></div>
+        <div><dt>Steel key</dt><dd id="key-steel">–</dd></div>
+        <div><dt>Accessibility</dt><dd id="key-ax">–</dd></div>
+      </dl>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

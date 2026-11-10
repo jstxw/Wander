@@ -1,12 +1,26 @@
 {
   "name": "wander-browser-agent",
+  "productName": "Wander",
   "version": "0.1.0",
+  "description": "Learn websites and Mac apps one highlighted step at a time.",
   "private": true,
   "type": "module",
+  "main": "desktop/main.mjs",
   "scripts": {
     "start": "node server/index.mjs",
+    "desktop": "electron .",
+    "fetch-python": "node scripts/fetch-python.mjs",
+    "helper": "mkdir -p build && xcrun swiftc -O -o build/wander-helper native/wander-helper.swift",
+    "build:mac": "bash scripts/build-mac.sh",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": { "node": ">=22" },
-  "dependencies": { "playwright": "1.58.2" }
+  "config": { "forge": "./forge.config.cjs" },
+  "dependencies": { "playwright": "1.58.2" },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-dmg": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "electron": "33.4.11"
+  }
 }
