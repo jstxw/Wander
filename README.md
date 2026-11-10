@@ -206,6 +206,29 @@ The interface distinguishes between:
 | Wander says another question is active | Resume, pause, or stop the existing question first. With wake voice enabled, say “Hello Wander, resume.” |
 | You updated the source code | Reload Wander on `chrome://extensions`, then refresh every open website tab that should use the new version. |
 
+## Wander for macOS (early test build)
+
+`Wander.app` guides native Mac apps as well as websites. It bundles the Node tutor (run on Electron 33's Node), a standalone Python 3.12 for the practice browser, and a Swift helper that reads app windows through macOS Accessibility and draws a click-through highlight. See [TESTING.md](TESTING.md) to install and test it.
+
+| Path | Responsibility |
+|---|---|
+| `desktop/` | Electron main process, preload bridge, and the Wander window |
+| `native/wander-helper.swift` | Accessibility snapshots and the AppKit highlight overlay |
+| `server/desktop-planner.mjs` | Validates app observations and chooses one step for native apps |
+| `scripts/fetch-python.mjs` | Downloads and checksums CPython 3.12.16, then installs Playwright into it |
+| `scripts/build-mac.sh` | Builds the helper, stages Python, and makes the DMG with Electron Forge |
+
+To run from source on a Mac:
+
+```sh
+npm install
+npm run fetch-python   # bundled Python for this machine, in vendor/python
+npm run helper         # compiles the Swift helper into build/
+npm run desktop        # opens Wander; grant Accessibility to Terminal when running this way
+```
+
+`npm run build:mac` produces `out/make/Wander-*.dmg`. Set `APPLE_SIGN_IDENTITY`, plus `APPLE_ID`, `APPLE_APP_PASSWORD`, and `APPLE_TEAM_ID` for notarization, to sign with a Developer ID. Otherwise the build is ad-hoc signed for testing.
+
 ## Development and verification
 
 Run the automated test suite with:
